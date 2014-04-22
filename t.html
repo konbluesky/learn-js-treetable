@@ -1,0 +1,237 @@
+﻿<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+	<meta http-equiv="Content-Type" content="text/html;charset=UTF-8" />
+	<title></title>
+    <script src="jquery-1.4.2.js"></script>
+    <script src="treedata.js"></script>
+    <script type="text/javascript">
+            
+            
+        $.fn.TreeTable = function(settings) {
+		var default_settings = {
+			hasTrHead : false,
+			treedata : null,
+			http_host : null
+		};
+
+		var ds = $.extend(default_settings, settings), table_dom = $(this), htmldata = [];
+
+		if(ds.treedata) {
+			htmldata = eachNode(ds.treedata, 1).htmldata;
+		}
+
+		$(table_dom).append(htmldata);
+
+		$("[name='pjselect']", table_dom).click(function(){
+			$("[name='selectpj']").val($(this).val());
+			$("[name='remove']").removeAttr("disabled");
+		});
+		
+		$(".expander", table_dom).each(function(){
+			var isleaf=$(this).parent().find("[name='isleaf']").val();
+			if(isleaf=='true'){
+				$(this).click(trigonclick);
+			}
+		});
+
+		function trigonclick(e) {
+			var eTarget = e.target || e.srcElement, 
+				tr = $(eTarget).parents("tr"), 
+				pid = tr.attr("id") || '';
+
+			if(tr.hasClass("expanded")) {// then *fold*
+				tr.removeClass("expanded");
+				tr.addClass("collapsed");
+				tr.siblings("tr." + pid).hide();
+				return;
+			} else if(tr.hasClass("collapsed")) {
+				tr.removeClass("collapsed").addClass("expanded");
+				tr.siblings("tr." + pid).show();
+				tr.siblings("tr.collapsed").each(function() {
+					tr.siblings("tr." + this.id).not(this).hide();
+				});
+			}
+		}
+
+		function eachNode(node, deep, pidstr) {
+			var root={
+					'isaccess': node.isaccessable == '1' ? true : false,
+					'htmldata':buildTrHtml(node, deep, pidstr),
+                    'invailChild':0,
+                    'unvailChild':0
+				};
+            //pidstr 全ての上記ノードのid、スベースで分けて保存する。
+			pidstr = pidstr || '';
+			pidstr += " " + node.projectid;
+			if(node.haschildren) {
+				var k = 0,              //k表示しないノード数
+                    reobj = {},         //再帰の結果
+                    nodeshtml = [];     //下位ノードのHTMLデータ
+				deep++;
+				for(var i = 0; i < node.ChildNodes.length; i++) {
+					//再帰的に全ての子ノードを取得
+                    reobj= eachNode(node.ChildNodes[i], deep, pidstr);
+                    //k表示しないノード数
+					if(!reobj.isaccess ) {
+						k++;
+					}
+					//ノードのhtmlデータをnodeshtmlに保存する。
+                    nodeshtml.push(reobj.htmldata);
+				}
+                var length=(getAllChildrens(node,0)-1)<0?0:(getAllChildrens(node,0)-1);
+                k=(getAllChildrensByFlag(node,0,false)-1)<0?0:(getAllChildrensByFlag(node,0,false)-1);
+                //如全部无效
+				if( k!=0 && k == length){
+					root.htmldata='';
+                    return root;
+                }
+                //部分有效
+                else if(k!=0 && k<length){
+                    if(!root.isaccess){
+                        root.htmldata=buildTrHtml(node,deep-1,pidstr,true)+nodeshtml.join("");
+                    }else{
+                        root.htmldata+=nodeshtml.join("");
+                    }
+                    return root;
+				}
+                //全部有效
+                else if(k ==0 ){
+                    root.htmldata+=nodeshtml.join("");
+                    return root;
+                }
+			} else {
+                //子ノードがアクセス権がない場合は、''を戻る
+				if(!root.isaccess){
+					root.htmldata=null;
+				}
+                else{
+                     //子ノードのアクセス権がある場合、フラグhasRealChild=1
+                    if(root.hasRealChild){
+                        ++root.hasRealChild;
+                    }else{
+                        root.hasRealChild=1;
+                    }
+                }
+				return root;
+			}
+		}
+		
+		
+		function buildTrHtml(obj, deep, pidstr,disabled) {
+			var nextPadding = deep * 15,
+				htmldata = [], 
+				isaccessable = obj.isaccessable == '1' ? true : false,
+				trclass = obj.haschildren ? 'expanded' : 'collapsed'; 
+
+			var bgcolorchange = checkEnddate(obj) ? ' style="background:#eaeaea"':'';
+            htmldata.push("<tr class='even" + pidstr + " " + trclass + "' id='" + obj.projectid + "'"+bgcolorchange+">");
+			if(ds.hasTrHead) {
+				htmldata.push("<td style='height: 20px; width: 20px;'><input type='radio' name='pjselect' value='"+obj.projectid+"'/></td>");
+			}
+			htmldata.push("<td class='name'>");
+			htmldata.push("<span class='expander' style='margin-left:" + nextPadding + "px'>&nbsp;</span>");
+			if(!isaccessable || disabled){
+				htmldata.push("<a href=javascript:alert('アクセス権限がありません。');>");
+			}else{
+				htmldata.push("<a href='http://" + ds.http_host.split(":")[0] + "/" + obj.template + "/" + obj.accessurl + "' target='_blank'>");
+			}
+			htmldata.push(obj.projectname);
+			htmldata.push("</a>");
+			htmldata.push("<input type='hidden' name='projectid' value='" + obj.projectid + "'/>");
+			htmldata.push("<input type='hidden' name='isleaf' value='" + obj.haschildren+ "'/>");
+			htmldata.push("</td>");
+			htmldata.push("<td>");
+			htmldata.push(obj.accessurl);
+			htmldata.push("</td>");
+			htmldata.push("<td>" + obj.template + "</td>");
+			htmldata.push("<td>");
+			htmldata.push(obj.begindate + "～" + obj.enddate);
+			htmldata.push("</td>");
+			htmldata.push("<td>");
+			htmldata.push(obj.createdate);
+			htmldata.push("</td>");
+			htmldata.push("<td>");
+			htmldata.push(obj.createuser);
+			htmldata.push("</td>");
+			htmldata.push("</tr>");
+			
+			return htmldata.join("");
+		}
+        
+        function checkEnddate(obj){
+            var today = new Date();
+            var mydate = new Date();
+            var enddate = obj.enddate;
+            adate  = enddate.split("/");
+            mydate.setFullYear(adate[0],adate[1]-1,adate[2]);
+            if (today > mydate){
+                return true;
+            }else{
+                return false;
+            }   
+        }
+        
+        
+        
+	}
+    function getAllChildrensByFlag(node,count,flag){
+        if(node.haschildren) {
+            if(node.isaccessable==flag){
+                console.debug(node.projectid+"|dd|"+node.projectname);
+                ++count;
+            }
+            for(var i = 0; i < node.ChildNodes.length; i++) {
+                count=getAllChildrensByFlag(node.ChildNodes[i],count,flag);
+            }
+            return count;
+        } else {
+        //console.debug(node.projectid+"|aa|"+node.projectname);
+            if(node.isaccessable==flag){
+                console.debug(node.projectid+"|aa|"+node.projectname);
+                ++count;
+            }
+            return count;
+        }
+    }
+   function getAllChildrens(node,count){
+        if(node.haschildren) {
+            ++count;
+            for(var i = 0; i < node.ChildNodes.length; i++) {
+                count=getAllChildrens(node.ChildNodes[i],count);
+            }
+            return count;
+        } else {
+                ++count;
+            return count;
+        }
+    }
+    //var treedata;
+    $(document).ready(function () {
+        var baseurl='/';
+        //treedata={"accessurl": "top", "createuser": "wangyijian", "enddate": "2012/09/06", "isaccessable": "1", "haschildren": true, "projectid": 1, "begindate": "2012/09/06", "parentid": 0, "userid": "admin", "template": "todo", "projectname": "top", "ChildNodes": [{"accessurl": "project8", "createuser": "wangyijian", "enddate": "2012/09/29", "isaccessable": "0", "haschildren": true, "projectid": 43, "begindate": "2012/09/12", "parentid": 1, "userid": "admin", "template": "todo", "projectname": "pj8", "ChildNodes": [{"accessurl": "project9", "createuser": "wangyijian", "enddate": "2012/09/20", "isaccessable": "0", "haschildren": true, "projectid": 44, "begindate": "2012/09/13", "parentid": 43, "userid": "admin", "template": "todo", "projectname": "pj9", "ChildNodes": [{"accessurl": "project10", "createuser": "wangyijian", "enddate": "2012/09/29", "isaccessable": "0", "haschildren": false, "projectid": 45, "begindate": "2012/09/19", "parentid": 44, "userid": "admin", "template": "todo", "projectname": "pj10", "ChildNodes": null, "createdate": "2012/09/07"}], "createdate": "2012/09/07"}, {"accessurl": "project11", "createuser": "wangyijian", "enddate": "2012/09/02", "isaccessable": "1", "haschildren": false, "projectid": 46, "begindate": "2012/08/01", "parentid": 43, "userid": "admin", "template": "todo", "projectname": "pj11", "ChildNodes": null, "createdate": "2012/09/08"}], "createdate": "2012/09/07"}], "createdate": "2012/09/06"};
+        var http_host='127.0.0.1:8080';
+        $("#asyTable").TreeTable({
+        treedata:treedata,
+        http_host:http_host
+        });
+        }); 
+    </script>
+</head>
+<body>
+	<table class="listing dirlist" id="asyTable">
+				<thead>
+					<tr>
+						<th>プロジェクト名</th>
+						<th>リポジトリ名</th>
+						<th>テンブレート</th>
+						<th>作業時間</th>
+						<th>作成日</th>
+						<th>作成者</th>
+					</tr>                
+				</thead>
+				<tbody>
+				</tbody>
+			</table>
+</body>
+</html>
